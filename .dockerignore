@@ -1,0 +1,43 @@
+# Git files
+.git
+.gitignore
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# Local outputs and temp files
+outputs/
+demo_outputs/
+*.xlsx
+*.csv
+*.log
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Documentation
+README*.md
+*.md
+!requirements.txt
+
+# Test files
+test_*.py
+*_test.py
+
+# Local environment files
+.env
+.env.local 
