@@ -5,4 +5,7 @@ selenium-wire>=4.5.4
 webdriver-manager>=3.5.1
 xlsxwriter>=3.1.9
 openpyxl>=3.0.0
-python-dotenv>=0.19.0 
+python-dotenv>=0.19.0
+yfinance>=0.2.18
+blinker<1.8
+setuptools>=65.5.0 

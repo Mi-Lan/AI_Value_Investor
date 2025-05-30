@@ -58,6 +58,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.common.exceptions import WebDriverException
 from dotenv import load_dotenv
+from copy import copy
 
 # Import the keys for data field mappings
 try:
@@ -1155,12 +1156,12 @@ class TIKRScraper:
                     
                     # Copy formatting if needed
                     if cell.has_style:
-                        target_cell.font = cell.font.copy()
-                        target_cell.border = cell.border.copy()
-                        target_cell.fill = cell.fill.copy()
+                        target_cell.font = copy(cell.font)
+                        target_cell.border = copy(cell.border)
+                        target_cell.fill = copy(cell.fill)
                         target_cell.number_format = cell.number_format
-                        target_cell.protection = cell.protection.copy()
-                        target_cell.alignment = cell.alignment.copy()
+                        target_cell.protection = copy(cell.protection)
+                        target_cell.alignment = copy(cell.alignment)
             
             # Copy column dimensions
             for col_letter, col_dimension in source_ws.column_dimensions.items():
@@ -1307,54 +1308,27 @@ class TIKRScraper:
             
             # 6) Sales to Capital (O15) - from calculated sales to capital ratio
             if hasattr(self, 'sales_to_capital') and self.sales_to_capital:
-                sales_to_capital_ratio = self.sales_to_capital['sales_to_capital_ratio']
-                valuation_ws['O15'].value = sales_to_capital_ratio
-                logger.info(f"Updated Sales to Capital (O15): {sales_to_capital_ratio}")
+                # Instead of direct value, create a reference to the sales_to_capital sheet
+                valuation_ws['O15'].value = "=sales_to_capital!B2"
+                logger.info(f"Updated Sales to Capital (O15) with formula: =sales_to_capital!B2")
             else:
                 logger.warning("Sales to Capital ratio not calculated or unavailable")
             
             # 7) Current Price (O19) - from Yahoo Finance real-time data
             if yfinance_data and 'Current Price' in yfinance_data:
-                try:
-                    # Extract price directly from yfinance_data and convert to number
-                    price_text = str(yfinance_data['Current Price'])
-                    # Remove $ sign, commas, and any other non-numeric characters except decimal point
-                    import re
-                    price_match = re.search(r'\$?([\d,.]+)', price_text)
-                    if price_match:
-                        # Remove $ and commas, keep only digits and decimal point
-                        price_clean = re.sub(r'[\$,]', '', price_match.group(1))
-                        current_price = float(price_clean)
-                        valuation_ws['O19'].value = current_price
-                        logger.info(f"Updated Current Price (O19): {current_price:.2f} (direct numeric value)")
-                    else:
-                        logger.warning(f"Could not parse current price from: {price_text}")
-                        
-                except Exception as e:
-                    logger.warning(f"Error updating current price in O19: {e}")
+                # Create a reference to the yahoo_finance_realtime sheet
+                # Use VALUE function to extract numeric value from text like "$200.85"
+                valuation_ws['O19'].value = "=VALUE(SUBSTITUTE(INDEX(yahoo_finance_realtime!B:B,MATCH(\"Current Price\",yahoo_finance_realtime!A:A,0)),\"$\",\"\"))"
+                logger.info(f"Updated Current Price (O19) with formula: =VALUE(SUBSTITUTE(INDEX(yahoo_finance_realtime!B:B,MATCH(\"Current Price\",yahoo_finance_realtime!A:A,0)),\"$\",\"\"))")
             else:
                 logger.warning("Yahoo Finance current price not available for O19 update")
             
             # 8) Number of shares (O28) - from Yahoo Finance real-time data "Shares Outstanding" in millions
             if yfinance_data and 'Shares Outstanding' in yfinance_data:
-                try:
-                    # Extract shares directly from yfinance_data and convert to millions
-                    shares_text = str(yfinance_data['Shares Outstanding'])
-                    # Remove commas and any non-numeric characters except decimal point
-                    import re
-                    shares_clean = re.sub(r'[,]', '', shares_text)
-                    shares_match = re.search(r'([\d.]+)', shares_clean)
-                    if shares_match:
-                        shares_number = float(shares_match.group(1))
-                        # Convert to millions (Yahoo Finance gives actual shares count)
-                        shares_millions = round(shares_number / 1000000, 2)
-                        valuation_ws['O28'].value = shares_millions
-                        logger.info(f"Updated Number of Shares (O28): {shares_millions:.2f} million (direct numeric value)")
-                    else:
-                        logger.warning(f"Could not parse shares outstanding value: {shares_text}")
-                        
-                except Exception as e:
-                    logger.warning(f"Error updating shares outstanding in O28: {e}")
+                # Create a reference to the yahoo_finance_realtime sheet and convert to millions
+                # Use VALUE function to handle comma-separated numbers like "14,935,799,808"
+                valuation_ws['O28'].value = "=VALUE(SUBSTITUTE(INDEX(yahoo_finance_realtime!B:B,MATCH(\"Shares Outstanding\",yahoo_finance_realtime!A:A,0)),\",\",\"\"))/1000000"
+                logger.info(f"Updated Number of Shares (O28) with formula: =VALUE(SUBSTITUTE(INDEX(yahoo_finance_realtime!B:B,MATCH(\"Shares Outstanding\",yahoo_finance_realtime!A:A,0)),\",\",\"\"))/1000000")
             else:
                 logger.warning("Yahoo Finance shares outstanding not available for O28 update")
             
