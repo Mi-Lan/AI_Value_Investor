@@ -33,6 +33,13 @@ Requirements:
     pip install yfinance selenium-wire pandas openpyxl python-dotenv webdriver-manager
 """
 
+# Fix for deployment environments - yfinance cache and pkg_resources issues
+try:
+    import appdirs as ad
+    ad.user_cache_dir = lambda *args: "/tmp"
+except ImportError:
+    pass
+
 import requests
 import json
 import time

@@ -5,6 +5,13 @@ A modern Streamlit web interface for the TIKR financial statements scraper.
 This provides an easy-to-use GUI for scraping financial data from any publicly traded company.
 """
 
+# Fix for yfinance cache issues on Streamlit Cloud
+try:
+    import appdirs as ad
+    ad.user_cache_dir = lambda *args: "/tmp"
+except ImportError:
+    pass
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
