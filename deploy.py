@@ -16,6 +16,35 @@ def print_banner():
 This script will help you deploy your app so friends can access it online!
 """)
 
+def run_pre_deployment_tests():
+    """Run deployment tests before proceeding"""
+    print("""
+🧪 PRE-DEPLOYMENT TESTS
+=======================
+Running tests to verify your app is ready for deployment...
+""")
+    
+    try:
+        result = subprocess.run([sys.executable, 'test_deployment.py'], 
+                              capture_output=True, text=True, timeout=60)
+        
+        if result.returncode == 0:
+            print("✅ All pre-deployment tests passed!")
+            return True
+        else:
+            print("❌ Pre-deployment tests failed!")
+            print("STDOUT:", result.stdout)
+            print("STDERR:", result.stderr)
+            return False
+            
+    except subprocess.TimeoutExpired:
+        print("⏰ Tests timed out - this usually means imports are working")
+        return True
+    except Exception as e:
+        print(f"⚠️  Could not run tests: {e}")
+        print("Proceeding anyway...")
+        return True
+
 def check_git_setup():
     """Check if Git is initialized and suggest setup"""
     if not Path('.git').exists():
@@ -75,6 +104,11 @@ def streamlit_cloud_setup():
 
 🔗 You'll get a URL like: https://yourapp.streamlit.app
 Share this URL with your friends! 🎊
+
+⚠️  IMPORTANT FOR DEPLOYMENT:
+- Your updated requirements.txt now includes openpyxl and yfinance
+- Users will enter their own TIKR credentials in the web interface
+- No sensitive data is included in the deployed code
 """)
 
 def github_setup():
@@ -94,7 +128,7 @@ We need to put your code on GitHub so Streamlit Cloud can access it.
     if result.stdout.strip():
         print("📝 Adding and committing your code...")
         subprocess.run(['git', 'add', '.'])
-        subprocess.run(['git', 'commit', '-m', 'Initial commit - TIKR Financial Scraper'])
+        subprocess.run(['git', 'commit', '-m', 'Initial commit - TIKR Financial Scraper with all dependencies'])
         print("✅ Code committed")
     
     # Check if remote is set
@@ -191,6 +225,16 @@ def heroku_setup():
 
 def main():
     print_banner()
+    
+    # Run pre-deployment tests first
+    if not run_pre_deployment_tests():
+        print("\n❌ DEPLOYMENT BLOCKED")
+        print("Please fix the test failures before deploying.")
+        print("\n💡 Common fixes:")
+        print("1. Run: pip install -r requirements.txt")
+        print("2. Check that all files exist")
+        print("3. Test locally with: python run_web_app.py")
+        return
     
     print("""
 🎯 CHOOSE YOUR DEPLOYMENT OPTION:

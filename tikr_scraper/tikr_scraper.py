@@ -139,10 +139,10 @@ class TIKRScraper:
     def _load_credentials(self) -> Tuple[str, str]:
         """
         Load TIKR credentials from multiple sources in order of priority:
-        1. config.py file
-        2. .env file
-        3. Environment variables
-        4. Demo credentials (fallback)
+        1. .env file (most secure)
+        2. Environment variables  
+        3. config.py file (fallback)
+        4. Web app user input (handled separately)
         
         Returns:
             Tuple of (email, password)
@@ -151,49 +151,71 @@ class TIKRScraper:
         password = None
         source = "not found"
         
-        # Priority 1: config.py file
+        # Priority 1: .env file and environment variables
         try:
-            try:
-                from . import config
-            except ImportError:
-                # Fallback for direct imports
-                import config
-            if hasattr(config, 'TIKR_EMAIL') and hasattr(config, 'TIKR_PASSWORD'):
-                email = config.TIKR_EMAIL
-                password = config.TIKR_PASSWORD
-                if email and password and email != "your_email@example.com":
-                    source = "config.py"
-                    logger.info("✅ Credentials loaded from config.py")
-                else:
-                    email = None
-                    password = None
-        except ImportError:
-            pass
+            # Load .env file from current directory and parent directories
+            load_dotenv()
+            # Also try loading from root directory specifically
+            import os
+            from pathlib import Path
+            
+            # Try multiple .env locations
+            env_paths = [
+                Path.cwd() / '.env',
+                Path(__file__).parent.parent / '.env',  # tikr_standalone_app/.env
+                Path.cwd().parent / '.env',
+            ]
+            
+            for env_path in env_paths:
+                if env_path.exists():
+                    load_dotenv(env_path)
+                    break
+                    
+            env_email = os.getenv('TIKR_EMAIL')
+            env_password = os.getenv('TIKR_PASSWORD')
+            if env_email and env_password and env_email != "your_email@example.com":
+                email = env_email
+                password = env_password
+                source = ".env file"
+                logger.info("✅ Credentials loaded from .env file")
         except Exception as e:
-            logger.warning(f"Error loading config.py: {e}")
+            logger.warning(f"Error loading .env file: {e}")
         
-        # Priority 2: .env file
+        # Priority 2: config.py file (only if .env didn't work)
         if not email or not password:
             try:
-                load_dotenv()
-                env_email = os.getenv('TIKR_EMAIL')
-                env_password = os.getenv('TIKR_PASSWORD')
-                if env_email and env_password:
-                    email = env_email
-                    password = env_password
-                    source = ".env file"
-                    logger.info("✅ Credentials loaded from .env file")
+                try:
+                    from . import config
+                except ImportError:
+                    # Fallback for direct imports
+                    import config
+                if hasattr(config, 'TIKR_EMAIL') and hasattr(config, 'TIKR_PASSWORD'):
+                    config_email = config.TIKR_EMAIL
+                    config_password = config.TIKR_PASSWORD
+                    if (config_email and config_password and 
+                        config_email != "your_email@example.com" and
+                        config_password != "your_password"):
+                        email = config_email
+                        password = config_password
+                        source = "config.py"
+                        logger.info("✅ Credentials loaded from config.py")
+            except ImportError:
+                pass
             except Exception as e:
-                logger.warning(f"Error loading .env file: {e}")
+                logger.warning(f"Error loading config.py: {e}")
         
-        # Priority 3: Environment variables (already checked above via load_dotenv)
-        
-        # Priority 4: Demo credentials (fallback)
+        # Priority 3: No valid credentials found
         if not email or not password:
-            logger.warning("⚠️  No credentials found in config.py or .env file, using demo credentials")
-            email = "milanrasovic.f@gmail.com"
-            password = "GsHr5-TiP$7uXLn"
-            source = "demo credentials"
+            logger.error("❌ No valid TIKR credentials found!")
+            logger.error("Please set up credentials using one of these methods:")
+            logger.error("1. Create .env file with TIKR_EMAIL and TIKR_PASSWORD")
+            logger.error("2. Set environment variables TIKR_EMAIL and TIKR_PASSWORD")
+            logger.error("3. Use the web app and enter credentials in the sidebar")
+            logger.error("4. Configure credentials in tikr_scraper/config.py")
+            raise Exception(
+                "No valid TIKR credentials found. "
+                "Please set TIKR_EMAIL and TIKR_PASSWORD in .env file or environment variables."
+            )
         
         logger.info(f"🔐 Using credentials from: {source}")
         return email, password

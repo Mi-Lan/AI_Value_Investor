@@ -4,15 +4,18 @@ TIKR Financial Scraper - Configuration File
 Store your TIKR account credentials here for easy access.
 This file is more convenient than using environment variables.
 
-IMPORTANT: Keep this file secure and never commit it to version control!
+IMPORTANT: DO NOT PUT REAL CREDENTIALS IN THIS FILE!
+This file may be shared publicly or committed to version control.
+
+Instead, use one of these secure methods:
+1. Environment variables (.env file)
+2. Streamlit secrets (for cloud deployment)
+3. User input in the web interface
 """
 
-# TIKR Account Credentials
-# Replace these with your actual TIKR account details
-# Sign up at: https://app.tikr.com/
-
-TIKR_EMAIL = "milanrasovic.f@gmail.com"
-TIKR_PASSWORD = "GsHr5-TiP$7uXLn"
+# Demo/placeholder credentials (DO NOT USE REAL ONES!)
+TIKR_EMAIL = "your_email@example.com"
+TIKR_PASSWORD = "your_password"
 
 # Optional: Output directory for Excel files
 DEFAULT_OUTPUT_DIR = "outputs"

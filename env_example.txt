@@ -1,0 +1,13 @@
+# TIKR Financial Scraper - Environment Variables
+# ===============================================
+#
+# Copy this file to `.env` and add your real credentials
+# The .env file should NEVER be committed to version control
+#
+# Get your TIKR account at: https://app.tikr.com/
+
+TIKR_EMAIL=your_email@example.com
+TIKR_PASSWORD=your_password_here
+
+# Optional: Override default output directory
+# DEFAULT_OUTPUT_DIR=my_custom_outputs 
