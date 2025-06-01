@@ -58,7 +58,10 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.common.exceptions import WebDriverException
 from dotenv import load_dotenv
-from copy import copy
+
+# Set up logging first, before any logger usage
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Import the keys for data field mappings
 try:
@@ -71,13 +74,10 @@ except ImportError:
 try:
     import yfinance as yf
     YFINANCE_AVAILABLE = True
+    logger.info("yfinance is available for real-time price data")
 except ImportError:
     YFINANCE_AVAILABLE = False
     logger.warning("yfinance not installed. Install with: pip install yfinance")
-
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 
 class TIKRScraper:
@@ -1069,49 +1069,10 @@ class TIKRScraper:
                 
                 # Export Sales to Capital data if available
                 if self.sales_to_capital:
-                    stc_data = []
-                    stc_data.append(['Sales to Capital Ratio', self.sales_to_capital['sales_to_capital_ratio']])
-                    stc_data.append(['Net Revenue (M)', self.sales_to_capital['net_revenue']])
-                    stc_data.append(['Net Invested Capital (M)', self.sales_to_capital['net_invested_capital']])
-                    stc_data.append(['Latest Year', self.sales_to_capital['latest_year']])
-                    stc_data.append(['Previous Year', self.sales_to_capital['previous_year']])
-                    stc_data.append(['', ''])  # Empty row separator
-                    stc_data.append(['CALCULATION COMPONENTS:', ''])
+                    # Now we need to create the sales to capital sheet after openpyxl phase
+                    # Just store a flag that we need to create it
+                    logger.info("Sales to Capital data will be added with formulas")
                     
-                    # Add component details
-                    components = self.sales_to_capital['components']
-                    stc_data.append(['Latest Revenue (M)', components['latest_revenue']])
-                    stc_data.append(['Previous Revenue (M)', components['previous_revenue']])
-                    stc_data.append(['Latest Invested Capital (M)', components['latest_invested_capital']])
-                    stc_data.append(['Previous Invested Capital (M)', components['previous_invested_capital']])
-                    stc_data.append(['', ''])  # Empty row separator
-                    stc_data.append(['BALANCE SHEET COMPONENTS:', ''])
-                    stc_data.append(['Latest Debt (M)', components['latest_debt']])
-                    stc_data.append(['Latest Equity (M)', components['latest_equity']])
-                    stc_data.append(['Latest Cash (M)', components['latest_cash']])
-                    stc_data.append(['Previous Debt (M)', components['previous_debt']])
-                    stc_data.append(['Previous Equity (M)', components['previous_equity']])
-                    stc_data.append(['Previous Cash (M)', components['previous_cash']])
-                    stc_data.append(['', ''])  # Empty row separator
-                    stc_data.append(['FORMULA:', 'Net Revenue / Net Invested Capital'])
-                    stc_data.append(['WHERE:', ''])
-                    stc_data.append(['Net Revenue =', 'Latest Revenue - Previous Revenue'])
-                    stc_data.append(['Invested Capital =', 'Debt + Equity - Cash'])
-                    stc_data.append(['Net Invested Capital =', 'Latest Invested Capital - Previous Invested Capital'])
-                    
-                    stc_df = pd.DataFrame(stc_data, columns=['Metric', 'Value'])
-                    stc_df.to_excel(writer, sheet_name='sales_to_capital', index=False)
-                    
-                    # Format the Sales to Capital worksheet
-                    stc_worksheet = writer.sheets['sales_to_capital']
-                    stc_worksheet.set_column(0, 0, 35)  # Metric column
-                    stc_worksheet.set_column(1, 1, 25)  # Value column
-                    
-                    # Add header
-                    stc_worksheet.write('A1', f'Sales to Capital Analysis - {filename.split("_")[0] if "_" in filename else filename}')
-                    
-                    logger.info("Sales to Capital data exported successfully")
-            
             # Step 2: Add base table with formulas preserved using openpyxl
             base_table_path = self._load_base_table()
             if base_table_path:
@@ -1119,11 +1080,205 @@ class TIKRScraper:
                 self._update_valuation_base_fields(output_file, live_data, yfinance_data)
                 logger.info("Successfully added valuation base table with formulas preserved")
             
+            # Step 3: Add Sales to Capital sheet with formulas using openpyxl
+            if self.sales_to_capital:
+                self._add_sales_to_capital_sheet(output_file)
+                logger.info("Successfully added sales to capital sheet with formulas")
+            
             logger.info(f"Successfully exported to {output_file}")
             return str(output_file)
             
         except Exception as e:
             logger.error(f"Error exporting to Excel: {e}")
+            raise
+    
+    def _add_sales_to_capital_sheet(self, output_file: Path) -> None:
+        """
+        Add Sales to Capital sheet with formulas that reference source data.
+        
+        Args:
+            output_file: Path to the output Excel file
+        """
+        try:
+            # Open the workbook
+            wb = openpyxl.load_workbook(output_file)
+            
+            # Check if required sheets exist
+            required_sheets = ['income_statement', 'balancesheet_statement']
+            missing_sheets = [sheet for sheet in required_sheets if sheet not in wb.sheetnames]
+            if missing_sheets:
+                logger.warning(f"Missing required sheets for sales to capital: {missing_sheets}")
+                wb.close()
+                return
+            
+            # Create new worksheet
+            stc_ws = wb.create_sheet(title='sales_to_capital')
+            
+            # Get source worksheets
+            income_ws = wb['income_statement']
+            balance_ws = wb['balancesheet_statement']
+            
+            # Helper function to find row and column for a specific year and metric
+            def find_cell_reference(worksheet, metric_name, year_offset=0):
+                """Find cell reference for a specific metric and year offset (0=latest, -1=previous)"""
+                # Find the row with the metric
+                for row_idx in range(1, worksheet.max_row + 1):
+                    cell_value = worksheet.cell(row=row_idx, column=1).value
+                    if cell_value and metric_name in str(cell_value):
+                        # Get the column for the year (max_col + year_offset)
+                        col_idx = worksheet.max_column + year_offset
+                        if col_idx >= 2:  # Make sure it's a valid column
+                            col_letter = openpyxl.utils.get_column_letter(col_idx)
+                            return f"{worksheet.title}!{col_letter}{row_idx}"
+                return None
+            
+            # Write header
+            stc_ws['A1'] = f'Sales to Capital Analysis - {output_file.stem.split("_")[0]}'
+            stc_ws['A1'].font = openpyxl.styles.Font(bold=True, size=14)
+            
+            # Write metrics with formulas
+            row = 3
+            stc_ws[f'A{row}'] = 'Sales to Capital Ratio'
+            stc_ws[f'B{row}'] = '=B4/B5'  # Will reference Net Revenue / Net Invested Capital
+            stc_ws[f'B{row}'].number_format = '0.0000'
+            
+            row += 1
+            stc_ws[f'A{row}'] = 'Net Revenue (M)'
+            # Find revenue cells
+            latest_rev_ref = find_cell_reference(income_ws, "Total Revenues", 0)
+            prev_rev_ref = find_cell_reference(income_ws, "Total Revenues", -1)
+            if latest_rev_ref and prev_rev_ref:
+                stc_ws[f'B{row}'] = f'={latest_rev_ref}-{prev_rev_ref}'
+            else:
+                stc_ws[f'B{row}'] = 'N/A - Revenue data not found'
+            
+            row += 1
+            stc_ws[f'A{row}'] = 'Net Invested Capital (M)'
+            stc_ws[f'B{row}'] = '=B11-B12'  # Will reference Latest IC - Previous IC
+            
+            row += 1
+            stc_ws[f'A{row}'] = 'Latest Year'
+            stc_ws[f'B{row}'] = self.sales_to_capital['latest_year']
+            
+            row += 1
+            stc_ws[f'A{row}'] = 'Previous Year'
+            stc_ws[f'B{row}'] = self.sales_to_capital['previous_year']
+            
+            # Empty row
+            row += 2
+            stc_ws[f'A{row}'] = 'CALCULATION COMPONENTS:'
+            stc_ws[f'A{row}'].font = openpyxl.styles.Font(bold=True)
+            
+            row += 1
+            stc_ws[f'A{row}'] = 'Latest Revenue (M)'
+            if latest_rev_ref:
+                stc_ws[f'B{row}'] = f'={latest_rev_ref}'
+            
+            row += 1
+            stc_ws[f'A{row}'] = 'Previous Revenue (M)'
+            if prev_rev_ref:
+                stc_ws[f'B{row}'] = f'={prev_rev_ref}'
+                
+            row += 1
+            stc_ws[f'A{row}'] = 'Latest Invested Capital (M)'
+            stc_ws[f'B{row}'] = '=B15+B16-B17'  # Debt + Equity - Cash
+            
+            row += 1
+            stc_ws[f'A{row}'] = 'Previous Invested Capital (M)'
+            stc_ws[f'B{row}'] = '=B18+B19-B20'  # Debt + Equity - Cash
+            
+            # Empty row
+            row += 2
+            stc_ws[f'A{row}'] = 'BALANCE SHEET COMPONENTS:'
+            stc_ws[f'A{row}'].font = openpyxl.styles.Font(bold=True)
+            
+            # Find balance sheet references
+            debt_metrics = ["Total Debt", "Long-Term Debt"]
+            equity_metrics = ["Total Equity", "Total Common Equity", "Shareholders Equity"]
+            cash_metrics = ["Cash And Equivalents", "Cash and Cash Equivalents"]
+            
+            # Latest components
+            row += 1
+            stc_ws[f'A{row}'] = 'Latest Debt (M)'
+            for metric in debt_metrics:
+                ref = find_cell_reference(balance_ws, metric, 0)
+                if ref:
+                    stc_ws[f'B{row}'] = f'={ref}'
+                    break
+            
+            row += 1
+            stc_ws[f'A{row}'] = 'Latest Equity (M)'
+            for metric in equity_metrics:
+                ref = find_cell_reference(balance_ws, metric, 0)
+                if ref:
+                    stc_ws[f'B{row}'] = f'={ref}'
+                    break
+                    
+            row += 1
+            stc_ws[f'A{row}'] = 'Latest Cash (M)'
+            for metric in cash_metrics:
+                ref = find_cell_reference(balance_ws, metric, 0)
+                if ref:
+                    stc_ws[f'B{row}'] = f'={ref}'
+                    break
+            
+            # Previous components
+            row += 1
+            stc_ws[f'A{row}'] = 'Previous Debt (M)'
+            for metric in debt_metrics:
+                ref = find_cell_reference(balance_ws, metric, -1)
+                if ref:
+                    stc_ws[f'B{row}'] = f'={ref}'
+                    break
+            
+            row += 1
+            stc_ws[f'A{row}'] = 'Previous Equity (M)'
+            for metric in equity_metrics:
+                ref = find_cell_reference(balance_ws, metric, -1)
+                if ref:
+                    stc_ws[f'B{row}'] = f'={ref}'
+                    break
+                    
+            row += 1
+            stc_ws[f'A{row}'] = 'Previous Cash (M)'
+            for metric in cash_metrics:
+                ref = find_cell_reference(balance_ws, metric, -1)
+                if ref:
+                    stc_ws[f'B{row}'] = f'={ref}'
+                    break
+            
+            # Formula explanations
+            row += 2
+            stc_ws[f'A{row}'] = 'FORMULA:'
+            stc_ws[f'A{row}'].font = openpyxl.styles.Font(bold=True)
+            stc_ws[f'B{row}'] = 'Net Revenue / Net Invested Capital'
+            
+            row += 1
+            stc_ws[f'A{row}'] = 'WHERE:'
+            stc_ws[f'A{row}'].font = openpyxl.styles.Font(bold=True)
+            
+            row += 1
+            stc_ws[f'A{row}'] = 'Net Revenue ='
+            stc_ws[f'B{row}'] = 'Latest Revenue - Previous Revenue'
+            
+            row += 1
+            stc_ws[f'A{row}'] = 'Invested Capital ='
+            stc_ws[f'B{row}'] = 'Debt + Equity - Cash'
+            
+            row += 1
+            stc_ws[f'A{row}'] = 'Net Invested Capital ='
+            stc_ws[f'B{row}'] = 'Latest IC - Previous IC'
+            
+            # Format column widths
+            stc_ws.column_dimensions['A'].width = 35
+            stc_ws.column_dimensions['B'].width = 25
+            
+            # Save the workbook
+            wb.save(output_file)
+            wb.close()
+            
+        except Exception as e:
+            logger.error(f"Error adding sales to capital sheet: {e}")
             raise
     
     def _add_base_table_with_formulas(self, output_file: Path, base_table_path: str) -> None:
@@ -1156,12 +1311,12 @@ class TIKRScraper:
                     
                     # Copy formatting if needed
                     if cell.has_style:
-                        target_cell.font = copy(cell.font)
-                        target_cell.border = copy(cell.border)
-                        target_cell.fill = copy(cell.fill)
+                        target_cell.font = cell.font.copy()
+                        target_cell.border = cell.border.copy()
+                        target_cell.fill = cell.fill.copy()
                         target_cell.number_format = cell.number_format
-                        target_cell.protection = copy(cell.protection)
-                        target_cell.alignment = copy(cell.alignment)
+                        target_cell.protection = cell.protection.copy()
+                        target_cell.alignment = cell.alignment.copy()
             
             # Copy column dimensions
             for col_letter, col_dimension in source_ws.column_dimensions.items():
@@ -1308,27 +1463,54 @@ class TIKRScraper:
             
             # 6) Sales to Capital (O15) - from calculated sales to capital ratio
             if hasattr(self, 'sales_to_capital') and self.sales_to_capital:
-                # Instead of direct value, create a reference to the sales_to_capital sheet
-                valuation_ws['O15'].value = "=sales_to_capital!B2"
-                logger.info(f"Updated Sales to Capital (O15) with formula: =sales_to_capital!B2")
+                sales_to_capital_ratio = self.sales_to_capital['sales_to_capital_ratio']
+                valuation_ws['O15'].value = sales_to_capital_ratio
+                logger.info(f"Updated Sales to Capital (O15): {sales_to_capital_ratio}")
             else:
                 logger.warning("Sales to Capital ratio not calculated or unavailable")
             
             # 7) Current Price (O19) - from Yahoo Finance real-time data
             if yfinance_data and 'Current Price' in yfinance_data:
-                # Create a reference to the yahoo_finance_realtime sheet
-                # Use VALUE function to extract numeric value from text like "$200.85"
-                valuation_ws['O19'].value = "=VALUE(SUBSTITUTE(INDEX(yahoo_finance_realtime!B:B,MATCH(\"Current Price\",yahoo_finance_realtime!A:A,0)),\"$\",\"\"))"
-                logger.info(f"Updated Current Price (O19) with formula: =VALUE(SUBSTITUTE(INDEX(yahoo_finance_realtime!B:B,MATCH(\"Current Price\",yahoo_finance_realtime!A:A,0)),\"$\",\"\"))")
+                try:
+                    # Extract price directly from yfinance_data and convert to number
+                    price_text = str(yfinance_data['Current Price'])
+                    # Remove $ sign, commas, and any other non-numeric characters except decimal point
+                    import re
+                    price_match = re.search(r'\$?([\d,.]+)', price_text)
+                    if price_match:
+                        # Remove $ and commas, keep only digits and decimal point
+                        price_clean = re.sub(r'[\$,]', '', price_match.group(1))
+                        current_price = float(price_clean)
+                        valuation_ws['O19'].value = current_price
+                        logger.info(f"Updated Current Price (O19): {current_price:.2f} (direct numeric value)")
+                    else:
+                        logger.warning(f"Could not parse current price from: {price_text}")
+                        
+                except Exception as e:
+                    logger.warning(f"Error updating current price in O19: {e}")
             else:
                 logger.warning("Yahoo Finance current price not available for O19 update")
             
             # 8) Number of shares (O28) - from Yahoo Finance real-time data "Shares Outstanding" in millions
             if yfinance_data and 'Shares Outstanding' in yfinance_data:
-                # Create a reference to the yahoo_finance_realtime sheet and convert to millions
-                # Use VALUE function to handle comma-separated numbers like "14,935,799,808"
-                valuation_ws['O28'].value = "=VALUE(SUBSTITUTE(INDEX(yahoo_finance_realtime!B:B,MATCH(\"Shares Outstanding\",yahoo_finance_realtime!A:A,0)),\",\",\"\"))/1000000"
-                logger.info(f"Updated Number of Shares (O28) with formula: =VALUE(SUBSTITUTE(INDEX(yahoo_finance_realtime!B:B,MATCH(\"Shares Outstanding\",yahoo_finance_realtime!A:A,0)),\",\",\"\"))/1000000")
+                try:
+                    # Extract shares directly from yfinance_data and convert to millions
+                    shares_text = str(yfinance_data['Shares Outstanding'])
+                    # Remove commas and any non-numeric characters except decimal point
+                    import re
+                    shares_clean = re.sub(r'[,]', '', shares_text)
+                    shares_match = re.search(r'([\d.]+)', shares_clean)
+                    if shares_match:
+                        shares_number = float(shares_match.group(1))
+                        # Convert to millions (Yahoo Finance gives actual shares count)
+                        shares_millions = round(shares_number / 1000000, 2)
+                        valuation_ws['O28'].value = shares_millions
+                        logger.info(f"Updated Number of Shares (O28): {shares_millions:.2f} million (direct numeric value)")
+                    else:
+                        logger.warning(f"Could not parse shares outstanding value: {shares_text}")
+                        
+                except Exception as e:
+                    logger.warning(f"Error updating shares outstanding in O28: {e}")
             else:
                 logger.warning("Yahoo Finance shares outstanding not available for O28 update")
             
