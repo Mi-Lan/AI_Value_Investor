@@ -141,7 +141,8 @@ cat outputs/token.tmp
 # TIKR Scraper Secrets Configuration
 # For Streamlit Community Cloud deployment
 
-# Credentials (required)
+# Credentials - Replace with your actual TIKR account credentials
+# These will be used automatically without prompting in the UI
 TIKR_EMAIL = "your_email@example.com"
 TIKR_PASSWORD = "your_password"
 
@@ -152,6 +153,11 @@ IS_DEPLOYMENT = "true"
 # Paste your locally generated token here
 TOKEN = "your_locally_generated_token"
 ```
+
+With this configuration:
+- The app will run in deployment mode
+- It will use your provided credentials automatically (no UI prompt)
+- It will use the pre-generated token instead of trying to use Chrome
 
 ### Step 3: Deploy Your App
 

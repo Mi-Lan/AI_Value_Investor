@@ -181,18 +181,57 @@ def main():
         st.write(f"**TIKRScraper Location:** `{tikr_scraper_dir}`")
         st.write(f"**Python Version:** {sys.version_info.major}.{sys.version_info.minor}")
     
-    # Credentials section
-    st.sidebar.subheader("TIKR Credentials")
-    email = st.sidebar.text_input("TIKR Email", value=os.getenv('TIKR_EMAIL', ''))
-    password = st.sidebar.text_input("TIKR Password", type="password", value=os.getenv('TIKR_PASSWORD', ''))
+    # Try to get credentials from Streamlit secrets or environment variables
+    email = ''
+    password = ''
+    credentials_source = 'None'
     
-    if email and password:
-        st.sidebar.success("✅ Credentials provided")
-        # Temporarily set environment variables
-        os.environ['TIKR_EMAIL'] = email
-        os.environ['TIKR_PASSWORD'] = password
-    else:
-        st.sidebar.warning("⚠️ Please provide TIKR credentials")
+    # Priority 1: Check Streamlit secrets
+    try:
+        if 'TIKR_EMAIL' in st.secrets and 'TIKR_PASSWORD' in st.secrets:
+            email = st.secrets['TIKR_EMAIL']
+            password = st.secrets['TIKR_PASSWORD']
+            if email and password and email != "your_email@example.com":
+                credentials_source = 'Streamlit Secrets'
+                # Set environment variables for TIKRScraper to use
+                os.environ['TIKR_EMAIL'] = email
+                os.environ['TIKR_PASSWORD'] = password
+    except Exception:
+        pass
+    
+    # Priority 2: Check environment variables if not in secrets
+    if not email or not password or email == "your_email@example.com":
+        env_email = os.getenv('TIKR_EMAIL', '')
+        env_password = os.getenv('TIKR_PASSWORD', '')
+        if env_email and env_password and env_email != "your_email@example.com":
+            email = env_email
+            password = env_password
+            credentials_source = 'Environment Variables'
+    
+    # Display credentials source
+    if credentials_source != 'None':
+        st.sidebar.success(f"✅ Credentials loaded from {credentials_source}")
+    
+    # Priority 3: Ask user for credentials if not found elsewhere
+    show_credential_inputs = not (email and password and email != "your_email@example.com")
+    
+    if show_credential_inputs:
+        # Credentials section
+        st.sidebar.subheader("TIKR Credentials")
+        st.sidebar.warning("⚠️ Credentials not found in secrets or environment")
+        
+        email_input = st.sidebar.text_input("TIKR Email", value=email)
+        password_input = st.sidebar.text_input("TIKR Password", type="password", value='')
+        
+        if email_input and password_input:
+            st.sidebar.success("✅ Credentials provided")
+            # Temporarily set environment variables
+            os.environ['TIKR_EMAIL'] = email_input
+            os.environ['TIKR_PASSWORD'] = password_input
+            email = email_input
+            password = password_input
+        else:
+            st.sidebar.warning("⚠️ Please provide TIKR credentials")
     
     # Options
     st.sidebar.subheader("Options")
@@ -262,8 +301,8 @@ def main():
     
     # Main scraping functionality
     if scrape_button and ticker_input:
-        if not email or not password:
-            st.error("❌ Please provide TIKR credentials in the sidebar")
+        if not email or not password or email == "your_email@example.com":
+            st.error("❌ Please provide valid TIKR credentials")
             return
         
         scrape_financial_data(ticker_input, include_live_data, show_debug_logs)
