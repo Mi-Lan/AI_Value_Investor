@@ -288,29 +288,45 @@ class TIKRScraper:
         """
         Generate access token by logging into TIKR platform.
         
-        In deployment environments, this will raise an exception since Chrome is not available.
-        Use the TIKR_ACCESS_TOKEN environment variable instead.
+        This method uses Selenium to automate the login process and
+        extract the access token from network requests.
+        
+        In deployment environments, it will use the pre-generated token from
+        Streamlit secrets instead of attempting to use Chrome.
         """
-        # Check if we're in a deployment environment
-        if DEPLOYMENT_ENV:
-            raise Exception(
-                "🚀 DEPLOYMENT MODE: Chrome browser not available in deployment environment.\n"
-                "Please set the TIKR_ACCESS_TOKEN environment variable with a pre-generated token.\n"
-                "To generate a token:\n"
-                "1. Run the scraper locally: python -c \"from tikr_scraper import TIKRScraper; s=TIKRScraper(); s.get_access_token(); print(f'Token: {s.access_token}')\"\n"
-                "2. Set TIKR_ACCESS_TOKEN environment variable with the generated token\n"
-                "See DEPLOYMENT_GUIDE.md for detailed instructions."
-            )
+        # Check if we're in deployment mode and have a pre-generated token
+        # First check for Streamlit secrets
+        try:
+            import streamlit as st
+            # Check if we're in a deployment environment
+            if st.secrets.get("IS_DEPLOYMENT", "").lower() == "true":
+                logger.info("Running in deployment environment - using pre-generated token")
+                if token := st.secrets.get("TOKEN", ""):
+                    logger.info("Using token from Streamlit secrets")
+                    self.access_token = token
+                    self._save_token(self.access_token)
+                    return
+                else:
+                    raise Exception("Running in deployment mode but no TOKEN provided in Streamlit secrets. "
+                                   "Please add a pre-generated token to your Streamlit secrets.")
+        except (ImportError, AttributeError):
+            # If streamlit is not available or no secrets, continue with normal token generation
+            pass
+            
+        # Check if DEPLOYMENT environment variable is set (alternative to Streamlit secrets)
+        if os.getenv("DEPLOYMENT", "").lower() == "true":
+            logger.info("DEPLOYMENT environment variable detected")
+            if token := os.getenv("TIKR_ACCESS_TOKEN", ""):
+                logger.info("Using token from environment variables")
+                self.access_token = token
+                self._save_token(self.access_token)
+                return
+            else:
+                raise Exception("Running in deployment mode but no TIKR_ACCESS_TOKEN environment variable found. "
+                               "Please set TIKR_ACCESS_TOKEN to a pre-generated token.")
         
-        # Check if selenium is available
-        if not SELENIUM_AVAILABLE:
-            raise Exception(
-                "Selenium dependencies not available. Install with:\n"
-                "pip install selenium selenium-wire webdriver-manager\n"
-                "Or use TIKR_ACCESS_TOKEN environment variable for token-based authentication."
-            )
-        
-        logger.info("Generating access token using Chrome browser...")
+        # Regular token generation using Chrome
+        logger.info("Generating access token...")
         
         chrome_options = Options()
         

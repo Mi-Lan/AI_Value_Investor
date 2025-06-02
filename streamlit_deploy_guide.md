@@ -104,3 +104,87 @@ from web_app.app import *
 ```
 
 3. **Push to GitHub and deploy on Streamlit Cloud!** 
+
+## The Problem
+When deploying the TIKR Scraper to Streamlit Cloud, the app cannot generate access tokens automatically because:
+
+1. Chrome browser is not available in the Streamlit Cloud environment
+2. Selenium WebDriver cannot run properly in the cloud environment
+3. Headless browser automation is blocked or unreliable
+
+## The Solution: Using Streamlit Secrets
+
+This app has been updated to automatically detect when it's running in a deployment environment and use a pre-generated token instead of trying to use Chrome.
+
+## Step-by-Step Deployment Guide
+
+### Step 1: Generate a Token Locally
+
+First, run the app locally to generate a token. You'll need:
+- Chrome installed
+- Valid TIKR credentials
+
+Run the app locally and let it generate a token. The token will be stored in the `outputs/token.tmp` file.
+
+```bash
+# Open the token file and copy its contents
+cat outputs/token.tmp
+```
+
+### Step 2: Configure Streamlit Secrets
+
+1. In your Streamlit Cloud dashboard, go to your app settings
+2. Open the "Secrets" section 
+3. Add the following to your secrets (replacing with your values):
+
+```toml
+# TIKR Scraper Secrets Configuration
+# For Streamlit Community Cloud deployment
+
+# Credentials (required)
+TIKR_EMAIL = "your_email@example.com"
+TIKR_PASSWORD = "your_password"
+
+# Deployment flag - MUST be set to "true"
+IS_DEPLOYMENT = "true"
+
+# Pre-generated access token (required for deployment)
+# Paste your locally generated token here
+TOKEN = "your_locally_generated_token"
+```
+
+### Step 3: Deploy Your App
+
+Deploy your app as normal to Streamlit Cloud. The app will automatically:
+1. Detect it's running in deployment mode
+2. Use the pre-generated token from secrets
+3. Skip Chrome/WebDriver initialization
+
+### Step 4: Token Renewal
+
+TIKR tokens typically expire after a certain period. When this happens:
+
+1. Run the app locally to generate a new token
+2. Copy the new token from `outputs/token.tmp`
+3. Update the `TOKEN` value in your Streamlit Cloud secrets
+
+## Troubleshooting
+
+### Error: "Running in deployment mode but no TOKEN provided"
+- **Cause**: Missing TOKEN in Streamlit secrets
+- **Solution**: Add the TOKEN to your secrets as shown above
+
+### Error: "502 Server Error: Bad Gateway"
+- **Cause**: Token has expired
+- **Solution**: Generate a new token locally and update your secrets
+
+### Error: "Failed to fetch financial data after token regeneration"
+- **Cause**: Invalid token or network issues
+- **Solution**: Generate a new token locally and update your secrets
+
+## Advanced: Managing Tokens
+
+For production deployments, consider:
+1. Setting up a scheduled job to generate tokens
+2. Implementing a token rotation system
+3. Using a secure method to transfer tokens to your deployment 

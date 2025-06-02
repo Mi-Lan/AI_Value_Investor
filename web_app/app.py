@@ -351,55 +351,89 @@ def scrape_financial_data(ticker: str, include_live_data: bool, show_debug_logs:
         
         if not scraper.access_token:
             try:
-                log_message("Generating new authentication token...")
-                status_text.text("🔐 Generating new authentication token...")
-                st.info("🔄 This may take 1-2 minutes for first-time authentication...")
+                # Check if we're in deployment mode
+                is_deployment = False
+                try:
+                    is_deployment = st.secrets.get("IS_DEPLOYMENT", "").lower() == "true"
+                except (AttributeError, KeyError):
+                    is_deployment = os.environ.get("DEPLOYMENT", "").lower() == "true"
                 
-                # Add timeout for token generation using threading
-                import threading
-                import queue
-                
-                def get_token_with_timeout():
-                    result_queue = queue.Queue()
-                    
-                    def token_worker():
-                        try:
-                            # Don't update UI from background thread
-                            log_message("Starting browser automation for token generation...", update_ui=False)
-                            scraper.get_access_token()
-                            result_queue.put(("success", None))
-                        except Exception as e:
-                            result_queue.put(("error", e))
-                    
-                    thread = threading.Thread(target=token_worker)
-                    thread.daemon = True
-                    thread.start()
-                    
-                    # Wait for result with timeout
-                    thread.join(timeout=120)  # 2 minute timeout
-                    
-                    if thread.is_alive():
-                        log_message("Authentication timed out after 2 minutes", "ERROR")
-                        update_logs_display()  # Update UI from main thread
-                        st.error("❌ Authentication timed out. This may be due to browser issues or network problems.")
-                        st.info("💡 Try running the scraper directly from command line first to generate a token.")
-                        return False
-                    
+                # Handle deployment mode separately
+                if is_deployment:
+                    log_message("Running in deployment environment - checking for pre-configured token...")
+                    # Try to get token from secrets or environment variables
                     try:
-                        result_type, error = result_queue.get_nowait()
-                        if result_type == "error":
-                            raise error
-                        log_message("✅ Token generated successfully")
-                        update_logs_display()  # Update UI from main thread
-                        return True
-                    except queue.Empty:
-                        log_message("Authentication failed with unknown error", "ERROR")
-                        update_logs_display()  # Update UI from main thread
-                        st.error("❌ Authentication failed with unknown error.")
-                        return False
-                
-                if not get_token_with_timeout():
-                    return
+                        # This will raise an exception if no token is available
+                        scraper.get_access_token()
+                        log_message("✅ Successfully loaded token from secrets/environment")
+                    except Exception as e:
+                        error_msg = f"Failed to load token in deployment mode: {str(e)}"
+                        log_message(error_msg, "ERROR")
+                        st.error(f"❌ {error_msg}")
+                        st.info("""
+                        ### Deployment Token Setup Required
+                        
+                        This app is running in deployment mode but no valid token was found.
+                        
+                        To fix this:
+                        1. Run the app locally to generate a token
+                        2. Copy the token from `outputs/token.tmp`
+                        3. Add it to your Streamlit secrets as described in the deployment guide
+                        
+                        See `streamlit_deploy_guide.md` for detailed instructions.
+                        """)
+                        return
+                else:
+                    # Regular token generation with browser automation
+                    log_message("Generating new authentication token...")
+                    status_text.text("🔐 Generating new authentication token...")
+                    st.info("🔄 This may take 1-2 minutes for first-time authentication...")
+                    
+                    # Add timeout for token generation using threading
+                    import threading
+                    import queue
+                    
+                    def get_token_with_timeout():
+                        result_queue = queue.Queue()
+                        
+                        def token_worker():
+                            try:
+                                # Don't update UI from background thread
+                                log_message("Starting browser automation for token generation...", update_ui=False)
+                                scraper.get_access_token()
+                                result_queue.put(("success", None))
+                            except Exception as e:
+                                result_queue.put(("error", e))
+                        
+                        thread = threading.Thread(target=token_worker)
+                        thread.daemon = True
+                        thread.start()
+                        
+                        # Wait for result with timeout
+                        thread.join(timeout=120)  # 2 minute timeout
+                        
+                        if thread.is_alive():
+                            log_message("Authentication timed out after 2 minutes", "ERROR")
+                            update_logs_display()  # Update UI from main thread
+                            st.error("❌ Authentication timed out. This may be due to browser issues or network problems.")
+                            st.info("💡 Try running the scraper directly from command line first to generate a token.")
+                            return False
+                        
+                        try:
+                            result_type, error = result_queue.get_nowait()
+                            if result_type == "error":
+                                raise error
+                            log_message("✅ Token generated successfully")
+                            update_logs_display()  # Update UI from main thread
+                            return True
+                        except queue.Empty:
+                            log_message("Authentication failed with unknown error", "ERROR")
+                            update_logs_display()  # Update UI from main thread
+                            st.error("❌ Authentication failed with unknown error.")
+                            return False
+                    
+                    if not get_token_with_timeout():
+                        return
                     
             except Exception as e:
                 error_msg = f"Authentication failed: {str(e)}"
