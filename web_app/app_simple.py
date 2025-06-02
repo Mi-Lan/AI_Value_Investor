@@ -224,6 +224,7 @@ def simple_scrape(ticker: str, include_live_data: bool, show_debug: bool):
         
         # Fetch live data
         live_data = None
+        yfinance_data = None
         if include_live_data:
             add_log("Fetching live market data...")
             status.text("📈 Fetching live market data...")
@@ -235,6 +236,18 @@ def simple_scrape(ticker: str, include_live_data: bool, show_debug: bool):
             except Exception as e:
                 add_log(f"⚠️ Live data fetch failed: {str(e)}")
                 st.warning(f"⚠️ Live market data unavailable: {str(e)}")
+            
+            # Also fetch Yahoo Finance real-time data
+            add_log("Fetching Yahoo Finance real-time data...")
+            status.text("📈 Fetching Yahoo Finance data...")
+            progress.progress(85)
+            
+            try:
+                yfinance_data = scraper.get_realtime_price_yfinance(ticker)
+                add_log("✅ Yahoo Finance data fetched")
+            except Exception as e:
+                add_log(f"⚠️ Yahoo Finance data fetch failed: {str(e)}")
+                st.warning(f"⚠️ Yahoo Finance data unavailable: {str(e)}")
         
         # Export
         add_log("Exporting to Excel...")
@@ -242,7 +255,7 @@ def simple_scrape(ticker: str, include_live_data: bool, show_debug: bool):
         progress.progress(90)
         
         filename = f"{ticker}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
-        result = scraper.export_to_excel(filename, live_data)
+        result = scraper.export_to_excel(filename, live_data, yfinance_data)
         
         progress.progress(100)
         status.text("✅ Completed!")

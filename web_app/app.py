@@ -451,6 +451,7 @@ def scrape_financial_data(ticker: str, include_live_data: bool, show_debug_logs:
         
         # Fetch live data if requested
         live_data = None
+        yfinance_data = None
         if include_live_data:
             log_message("Fetching live market data...")
             status_text.text("📈 Fetching live market data...")
@@ -461,6 +462,17 @@ def scrape_financial_data(ticker: str, include_live_data: bool, show_debug_logs:
             except Exception as e:
                 log_message(f"Warning: Failed to fetch live data: {str(e)}", "WARNING")
                 st.warning(f"⚠️ Live market data fetch failed: {str(e)}")
+            
+            # Also fetch Yahoo Finance real-time data
+            log_message("Fetching Yahoo Finance real-time data...")
+            status_text.text("📈 Fetching Yahoo Finance real-time data...")
+            progress_bar.progress(80)
+            try:
+                yfinance_data = scraper.get_realtime_price_yfinance(ticker)
+                log_message("✅ Yahoo Finance real-time data fetched")
+            except Exception as e:
+                log_message(f"Warning: Failed to fetch Yahoo Finance data: {str(e)}", "WARNING")
+                st.warning(f"⚠️ Yahoo Finance data fetch failed: {str(e)}")
         
         # Export to Excel
         log_message("Exporting to Excel...")
@@ -469,7 +481,7 @@ def scrape_financial_data(ticker: str, include_live_data: bool, show_debug_logs:
         
         try:
             filename = f"{ticker}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
-            result = scraper.export_to_excel(filename, live_data)
+            result = scraper.export_to_excel(filename, live_data, yfinance_data)
             log_message(f"✅ Export completed: {result}")
         except Exception as e:
             error_msg = f"Failed to export to Excel: {str(e)}"
@@ -562,7 +574,8 @@ def preview_data(filepath: str, ticker: str):
                     st.caption(f"📈 {len(df)} rows × {len(df.columns)} columns")
                     
                     # Special handling for live market data
-                    if sheet_name == 'live_market_data' and 'Metric' in df.columns and 'Value' in df.columns:
+                    if (sheet_name in ['live_market_data', 'yahoo_finance_realtime'] and 
+                        'Metric' in df.columns and 'Value' in df.columns):
                         show_market_data_visualization(df, ticker)
                 else:
                     st.info("No data available for this sheet")
@@ -581,19 +594,27 @@ def show_market_data_visualization(df: pd.DataFrame, ticker: str):
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        price = metrics_data.get('Current Price (Calculated)', 'N/A')
+        # Try Yahoo Finance current price first, then TIKR calculated price
+        price = (metrics_data.get('Current Price') or 
+                metrics_data.get('Current Price (Calculated)') or 'N/A')
         st.metric("Current Price", price)
     
     with col2:
-        pe = metrics_data.get('LTM P/E Ratio', 'N/A')
+        # Try both P/E ratio sources
+        pe = (metrics_data.get('P/E Ratio') or 
+              metrics_data.get('LTM P/E Ratio') or 'N/A')
         st.metric("P/E Ratio", pe)
     
     with col3:
-        eps = metrics_data.get('LTM EPS', 'N/A')
+        # Try EPS from different sources
+        eps = (metrics_data.get('EPS (TTM)') or 
+               metrics_data.get('LTM EPS') or 'N/A')
         st.metric("LTM EPS", eps)
     
     with col4:
-        market_cap = metrics_data.get('Market Cap (Calculated)', 'N/A')
+        # Try market cap from different sources
+        market_cap = (metrics_data.get('Market Cap') or 
+                     metrics_data.get('Market Cap (Calculated)') or 'N/A')
         st.metric("Market Cap", market_cap)
 
 def show_sample_data():
