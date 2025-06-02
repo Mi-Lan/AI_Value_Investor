@@ -404,8 +404,67 @@ def scrape_financial_data(ticker: str, include_live_data: bool, show_debug_logs:
             except Exception as e:
                 error_msg = f"Authentication failed: {str(e)}"
                 log_message(error_msg, "ERROR")
-                st.error(f"❌ {error_msg}")
-                st.info("💡 Common issues: Chrome not installed, credentials incorrect, or network problems.")
+                
+                # Check if this is a deployment-related error
+                if ("DEPLOYMENT MODE" in str(e) or 
+                    "Chrome browser not available" in str(e) or
+                    "Failed to initialize browser" in str(e)):
+                    
+                    st.error("🚀 **Deployment Environment Detected**")
+                    st.markdown("""
+                    <div style="background-color: #fff3cd; padding: 1rem; border-radius: 0.5rem; border-left: 4px solid #ffc107;">
+                        <h4>🔧 Setup Required for Deployment</h4>
+                        <p>This app is running in a deployment environment where Chrome browser is not available.</p>
+                        <p><strong>To fix this, you need to:</strong></p>
+                        <ol>
+                            <li><strong>Generate a token locally:</strong>
+                                <br>Run <code>python generate_token.py</code> on your local machine</li>
+                            <li><strong>Set environment variables:</strong>
+                                <br>Add <code>TIKR_ACCESS_TOKEN</code> and <code>DEPLOYMENT=true</code> to your deployment</li>
+                            <li><strong>Use deployment requirements:</strong>
+                                <br>Use <code>requirements_deployment.txt</code> instead of <code>requirements.txt</code></li>
+                        </ol>
+                        <p>📖 See <code>DEPLOYMENT_GUIDE.md</code> for detailed instructions.</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Show specific platform instructions
+                    st.markdown("### Platform-Specific Instructions:")
+                    
+                    tab1, tab2, tab3 = st.tabs(["Streamlit Cloud", "Heroku", "Railway"])
+                    
+                    with tab1:
+                        st.code("""
+# In your Streamlit Cloud secrets.toml:
+TIKR_EMAIL = "your_email@example.com"
+TIKR_PASSWORD = "your_password"
+TIKR_ACCESS_TOKEN = "your_generated_token_here"
+DEPLOYMENT = "true"
+                        """)
+                    
+                    with tab2:
+                        st.code("""
+# Heroku config commands:
+heroku config:set TIKR_EMAIL=your_email@example.com
+heroku config:set TIKR_PASSWORD=your_password
+heroku config:set TIKR_ACCESS_TOKEN=your_generated_token_here
+heroku config:set DEPLOYMENT=true
+                        """)
+                    
+                    with tab3:
+                        st.code("""
+# Railway config commands:
+railway env set TIKR_EMAIL=your_email@example.com
+railway env set TIKR_PASSWORD=your_password
+railway env set TIKR_ACCESS_TOKEN=your_generated_token_here
+railway env set DEPLOYMENT=true
+                        """)
+                    
+                else:
+                    # Regular error handling
+                    st.error(f"❌ {error_msg}")
+                    st.info("💡 Common issues: Chrome not installed, credentials incorrect, or network problems.")
+                
                 if show_debug_logs:
                     st.error(f"Debug details: {repr(e)}")
                     st.code(traceback.format_exc(), language=None)

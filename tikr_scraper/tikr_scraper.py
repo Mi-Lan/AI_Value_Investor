@@ -51,12 +51,33 @@ from typing import Optional, Tuple, Dict, Any
 
 import pandas as pd
 import openpyxl
-from seleniumwire import webdriver
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.common.exceptions import WebDriverException
+
+# Only import selenium dependencies if not in deployment environment
+DEPLOYMENT_ENV = (
+    os.getenv('DEPLOYMENT', '').lower() == 'true' or
+    os.getenv('STREAMLIT_RUNTIME_ENV') is not None or
+    os.getenv('HEROKU_APP_NAME') is not None or
+    os.getenv('RAILWAY_PROJECT_NAME') is not None or
+    os.getenv('STREAMLIT_CLOUD') is not None
+)
+
+if not DEPLOYMENT_ENV:
+    try:
+        from seleniumwire import webdriver
+        from webdriver_manager.chrome import ChromeDriverManager
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.chrome.options import Options
+        from selenium.webdriver.chrome.service import Service
+        from selenium.common.exceptions import WebDriverException
+        SELENIUM_AVAILABLE = True
+    except ImportError:
+        SELENIUM_AVAILABLE = False
+        WebDriverException = Exception  # Fallback for when selenium is not available
+        logger.warning("Selenium dependencies not available - browser automation disabled")
+else:
+    SELENIUM_AVAILABLE = False
+    WebDriverException = Exception  # Fallback for deployment environments
+
 from dotenv import load_dotenv
 
 # Set up logging first, before any logger usage
@@ -78,6 +99,12 @@ try:
 except ImportError:
     YFINANCE_AVAILABLE = False
     logger.warning("yfinance not installed. Install with: pip install yfinance")
+
+# Log deployment status
+if DEPLOYMENT_ENV:
+    logger.info("🚀 Running in DEPLOYMENT environment - Chrome/Selenium disabled")
+else:
+    logger.info("💻 Running in LOCAL environment - Chrome/Selenium available")
 
 
 class TIKRScraper:
@@ -229,26 +256,61 @@ class TIKRScraper:
         return email, password
     
     def _load_token(self) -> str:
-        """Load access token from file if it exists."""
+        """Load access token from environment variable or file."""
+        # Priority 1: Check environment variable (for deployment)
+        env_token = os.getenv('TIKR_ACCESS_TOKEN')
+        if env_token and env_token.strip():
+            logger.info("✅ Access token loaded from TIKR_ACCESS_TOKEN environment variable")
+            return env_token.strip()
+        
+        # Priority 2: Load from file (for local development)
         if self.token_file.exists():
             with open(self.token_file, 'r') as f:
-                return f.read().strip()
+                token = f.read().strip()
+                if token:
+                    logger.info("✅ Access token loaded from token file")
+                    return token
+        
+        logger.info("ℹ️ No access token found in environment or file")
         return ''
     
     def _save_token(self, token: str) -> None:
-        """Save access token to file."""
-        with open(self.token_file, 'w') as f:
-            f.write(token)
-        logger.info("Access token saved")
+        """Save access token to file (only in non-deployment environments)."""
+        # Don't save tokens to file in deployment environments for security
+        if not DEPLOYMENT_ENV:
+            with open(self.token_file, 'w') as f:
+                f.write(token)
+            logger.info("Access token saved to file")
+        else:
+            logger.info("Deployment environment detected - token not saved to file")
     
     def get_access_token(self) -> None:
         """
         Generate access token by logging into TIKR platform.
         
-        This method uses Selenium to automate the login process and
-        extract the access token from network requests.
+        In deployment environments, this will raise an exception since Chrome is not available.
+        Use the TIKR_ACCESS_TOKEN environment variable instead.
         """
-        logger.info("Generating access token...")
+        # Check if we're in a deployment environment
+        if DEPLOYMENT_ENV:
+            raise Exception(
+                "🚀 DEPLOYMENT MODE: Chrome browser not available in deployment environment.\n"
+                "Please set the TIKR_ACCESS_TOKEN environment variable with a pre-generated token.\n"
+                "To generate a token:\n"
+                "1. Run the scraper locally: python -c \"from tikr_scraper import TIKRScraper; s=TIKRScraper(); s.get_access_token(); print(f'Token: {s.access_token}')\"\n"
+                "2. Set TIKR_ACCESS_TOKEN environment variable with the generated token\n"
+                "See DEPLOYMENT_GUIDE.md for detailed instructions."
+            )
+        
+        # Check if selenium is available
+        if not SELENIUM_AVAILABLE:
+            raise Exception(
+                "Selenium dependencies not available. Install with:\n"
+                "pip install selenium selenium-wire webdriver-manager\n"
+                "Or use TIKR_ACCESS_TOKEN environment variable for token-based authentication."
+            )
+        
+        logger.info("Generating access token using Chrome browser...")
         
         chrome_options = Options()
         
